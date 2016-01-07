@@ -1,5 +1,6 @@
 require(data.table)
 require(ggplot2)
+require(scales)
 source("rdb/mysql.R")
 
 # What can we say about the validity of found coordinates?
@@ -121,6 +122,58 @@ plok.puntenwolk <- function() {
         cairo_pdf("images/puntenwolk.pdf", bg="transparent", width = 17, height = 14)
         op <- par(bg="transparent")
         puntenwolk()
+        dev.off()
+        par(op)
+}
+
+distance.line <- function() {
+        dt <- compute.distance()
+        
+        start <- 0.5
+        
+        # bereken de quantile, maar dan oplopend met 1% per stap.
+        #         > quantile(dt$distance)
+        #         0%       25%       50%       75%      100% 
+        #          0        39       151       755 455685701 
+        # 75% viel binnen 755 meter
+        qt <- quantile(dt[method > 0,]$distance, probs=seq(start, 1, 0.01), names=FALSE)
+        dtq <- data.table(percentage=seq(start, 1, 0.01),
+                          methode="totaal", afstand=qt)
+        
+        qt <- quantile(dt[method==2,]$distance, probs=seq(start, 1, 0.01), names=FALSE)
+        dtq <- rbind(dtq, data.table(percentage=seq(start, 1, 0.01),
+                                     methode="cummulatiefA", afstand=qt))
+        
+        qt <- quantile(dt[method==1,]$distance, probs=seq(start, 1, 0.01), names=FALSE)
+        dtq <- rbind(dtq, data.table(percentage=seq(start, 1, 0.01),
+                                     methode="thePattern", afstand=qt))
+        
+        qt <- quantile(dt[method==3,]$distance, probs=seq(start, 1, 0.01), names=FALSE)
+        dtq <- rbind(dtq, data.table(percentage=seq(start, 1, 0.01),
+                                     methode="cummulatiefB", afstand=qt))
+        
+        qt <- quantile(dt[method==6,]$distance, probs=seq(start, 1, 0.01), names=FALSE)
+        dtq <- rbind(dtq, data.table(percentage=seq(start, 1, 0.01),
+                                     methode="xyPattern", afstand=qt))
+        
+        qt <- quantile(dt[method==110,]$distance, probs=seq(start, 1, 0.01), names=FALSE)
+        dtq <- rbind(dtq, data.table(percentage=seq(start, 1, 0.01),
+                                     methode="nozwPattern", afstand=qt))
+        
+        ggplot(data=dtq, aes(x=afstand, y=percentage, group=methode, colour=methode)) +
+                geom_line(size=1.5) +
+                geom_point(size=2.5) +
+                ggtitle("Percentage van gevonden punten binnen een straal rondom het controlepunt\nvoor verschillende methoden van vinden") +
+                scale_x_continuous("straal in meters", limits=c(0, 30000)) +
+                scale_y_continuous(labels=percent) +
+                theme_bw()
+                
+}
+
+plok.distance.line <- function() {
+        cairo_pdf("images/distance.pdf", bg="transparent", width = 9, height = 6)
+        op <- par(bg="transparent")
+        distance.line()
         dev.off()
         par(op)
 }
