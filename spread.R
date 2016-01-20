@@ -1,11 +1,13 @@
 require(data.table)
 source("rdb/mysql.R")
 source("geo.R")
+source("compute.R")
 
 path.spread.1 <- "data/spread_1.csv" # ruw.
 path.spread.2 <- "data/spread_2.csv" # spreiding berekend, gefilterd op methode.
 path.spread.3 <- "data/spread_3.csv" # geo names voor kritieke records.
 path.spread.4 <- "data/spread_4.csv" # bereken waarde gewicht records.
+path.aggregate <- "data/aggregate.csv" # aggregatie van verschillende waarden op niveau dataset
 
 select.spread.raw <- function() {
         query <- paste("SELECT datasetId, emd_title, lat, lon, coor_x, coor_y, method",
@@ -194,5 +196,54 @@ compute.weight <- function() {
         
         write.csv(dt, path.spread.4, row.names=FALSE) 
         dt
+}
+
+
+
+aggregate.on.datasets <- function() {
+        dt <- as.data.table(read.csv(path.spread.4, stringsAsFactor=FALSE))
+        
+        # get the standard deviation for series and weighted series per dataset
+        # 
+        dts <- dt[, j = list(
+                sdx = as.integer(ifelse(is.na(sd(coor_x)), 0, (sd(coor_x)))),
+                sdy = as.integer(ifelse(is.na(sd(coor_y)), 0, (sd(coor_y)))),
+                sdwx = as.integer(ifelse(is.na(sd(rep(coor_x, times=weight))), 0, (sd(rep(coor_x, times=weight))))),
+                sdwy = as.integer(ifelse(is.na(sd(rep(coor_y, times=weight))), 0, (sd(rep(coor_y, times=weight)))))
+        ),
+        by = list(datasetId)]
+        # and the distance for these standard deviations
+        dts[, dist:=as.integer(sqrt((sdx)^2 + (sdy)^2))]
+        dts[, distw:=as.integer(sqrt((sdwx)^2 + (sdwy)^2))]
+        dt <- merge(dt, dts, by=c("datasetId"), all.x=TRUE)
+        
+        # aggregate
+        dta <- dt[, j = list(
+                emd_title = emd_title[1],
+                n_pdf = n[1],
+                n_used = .N,
+                sdx = sdx[1],
+                sdy = sdy[1],
+                sdwx = sdwx[1],
+                sdwy = sdwy[1],
+                dist1 = dist1[1],
+                dist = dist[1],
+                distw = distw[1],
+                minx = min(coor_x),
+                maxx = max(coor_x),
+                miny = min(coor_y),
+                maxy = max(coor_y),
+                opp = ((max(coor_x) - min(coor_x))/1000) * ((max(coor_y) - min(coor_y))/1000),
+                waarde = sum(weight),
+                medianx = as.integer(median(rep(coor_x, times=weight))),
+                mediany = as.integer(median(rep(coor_y, times=weight))),
+                plaats = paste0(unique(unlist(strsplit(name, ","))), collapse=","),
+                gemeente = paste0(unique(unlist(strsplit(adminName2, ","))), collapse=",")
+        ),
+        by = list(datasetId)]
+        dta[, lat:=RDtoWGS84(medianx, mediany)$lat]
+        dta[, lon:=RDtoWGS84(medianx, mediany)$lon]
+        write.csv(dta, path.aggregate, row.names=FALSE) 
+        dta
 }
 
